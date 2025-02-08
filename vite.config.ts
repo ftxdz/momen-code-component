@@ -24,6 +24,7 @@ export default defineConfig({
         'react-dom',
         'react-router-dom',
         'zvm-code-context',
+        'swr',
       ],
     }),
   ],
