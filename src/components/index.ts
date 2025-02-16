@@ -5,7 +5,7 @@ import { DataTable } from './DataTable';
 import { Bar3DChart } from './Bar3DChart';
 import { YouTubeVideo } from './YouTubeVideo';
 import {TweetPost} from './TweetPost';
-
+import {SwipeScale} from './SwipeScale';
 
 
 export default {
@@ -16,4 +16,5 @@ export default {
   Bar3DChart,
   YouTubeVideo,
   TweetPost,
+  SwipeScale,
 };

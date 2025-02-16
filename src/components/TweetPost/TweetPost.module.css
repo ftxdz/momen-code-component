@@ -1,19 +1,19 @@
 .tweetContainer {
   width: 100%;
   display: flex;
-  min-height: min-content; /* 确保容器至少包含内容高度 */
+  min-height: min-content; 
 }
 
 .tweetCard {
   width: 100%;
-  height: auto; /* 高度自适应内容 */
+  height: auto; 
   flex: 1;
 }
 
-/* 确保 iframe 内容可以正常显示 */
+
 .tweetCard :global(iframe) {
   width: 100% !important;
-  min-height: 250px !important; /* 设置最小高度，防止内容加载时塌陷 */
+  min-height: 250px !important; 
 }
 .tweetContainer :global(.react-tweet-theme) {
   margin: 0;
