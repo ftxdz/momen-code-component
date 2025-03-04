@@ -6,7 +6,7 @@ import { Bar3DChart } from './Bar3DChart';
 import { YouTubeVideo } from './YouTubeVideo';
 import {TweetPost} from './TweetPost';
 import {SwipeScale} from './SwipeScale';
-
+import {ChatRoom} from './ChatRoom';
 
 export default {
   AddCalculator,
@@ -17,4 +17,5 @@ export default {
   YouTubeVideo,
   TweetPost,
   SwipeScale,
+  ChatRoom,
 };
