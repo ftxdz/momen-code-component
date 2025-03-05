@@ -1,6 +1,6 @@
 {
   "name": "momen-code-component",
-  "version": "1.2.31",
+  "version": "1.2.33",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -8,7 +8,8 @@
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "gen-gql": "graphql-codegen",
-    "watch": "npm-watch gen-gql"
+    "watch:gql": "npm-watch gen-gql",
+    "watch:build": "npm-watch build"
   },
   "watch": {
     "gen-gql": {
@@ -17,6 +18,15 @@
       ],
       "extensions": [
         "gql"
+      ]
+    },
+    "build": {
+      "patterns": [
+        "src"
+      ],
+      "extensions": [
+        "ts",
+        "tsx"
       ]
     }
   },

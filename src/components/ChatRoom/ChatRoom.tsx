@@ -1,4 +1,4 @@
-import { Input, Button, Upload, message } from "antd";
+import { Input, Button, Upload, Modal } from "antd";
 import type { UploadFile, UploadChangeParam } from "antd/es/upload/interface";
 import styles from "./ChatRoom.module.css";
 import {
@@ -50,10 +50,7 @@ const ChatRoomInner = ({
   propData,
   apolloClient,
 }: ChatRoomProps & { apolloClient: any }) => {
-  console.log("propData", propData);
-  console.log("typeof propData.isAssistant", typeof propData.isAssistant);
   const isAssistant = typeof propData.isAssistant === "boolean" ? propData.isAssistant : (propData.isAssistant =="true");
-  console.log("isAssistant", isAssistant);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -63,54 +60,46 @@ const ChatRoomInner = ({
   // 添加消息列表的引用
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  // WebSocket 消息处理
-  const handleWebSocketMessage = useCallback((wsData: any) => {
-    if (wsData.type !== "data" || !wsData.payload) return;
-
-    const messageData = wsData.payload?.data?.fz_streaming_fz_message;
-    if (!messageData) return;
-
-    console.log("收到新消息:", messageData);
-    updateMessages(messageData);
-    //setIsLoading(false);
-  }, []);
-
   // 更新消息列表
   const updateMessages = useCallback((messageData: Message | Message[]) => {
     setMessages((prevMessages) => {
-      const newMessages = Array.isArray(messageData)
-        ? [...prevMessages, ...messageData]
-        : [...prevMessages, messageData];
-      console.log("更新后的消息列表:", newMessages);
-      return newMessages;
+      const newMessages = Array.isArray(messageData) ? messageData : [messageData];
+      
+      // 过滤掉已经存在的消息
+      const uniqueNewMessages = newMessages.filter(newMsg => 
+        !prevMessages.some(existingMsg => existingMsg.id === newMsg.id)
+      );
+
+      if (uniqueNewMessages.length === 0) {
+        return prevMessages;
+      }
+
+      return [...prevMessages, ...uniqueNewMessages];
     });
   }, []);
 
-  // 设置 WebSocket 监听
-  useEffect(() => {
-    const originalLog = console.log;
-    console.log = function (...args) {
-      if (args[0] === "Received:") {
-        handleWebSocketMessage(args[1]);
-      }
-      originalLog.apply(console, args);
-    };
-    return () => {
-      console.log = originalLog;
-    };
-  }, [handleWebSocketMessage]);
+  const showError = (errorMessage: string) => {
+    console.log("errorMessage", errorMessage);
+    Modal.error({
+      title: '错误提示',
+      content: errorMessage,
+    });
+  };
 
-  // 使用 Apollo Client 订阅
+  // WebSocket 消息处理
   useEffect(() => {
     const subscription = apolloClient.subscribe({
-      query: isAssistant
-        ? GQL_SUBSCRIPTION_FOR_CONVERSATION
-        : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
-      variables: { conversationId: propData.conversationId },
+      query: isAssistant ? GQL_SUBSCRIPTION_FOR_CONVERSATION : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
+      variables: { conversationId: propData.conversationId }
     });
 
     const subscriber = subscription.subscribe({
-      next: ({ data }: { data?: any }) => {
+      next: ({ data, errors }: { data?: any, errors?: any[] }) => {
+        if (errors) {
+          showError(errors[0]?.message || '订阅消息失败');
+          return;
+        }
+
         if (isAssistant && data?.fz_streaming_fz_message) {
           updateMessages(data.fz_streaming_fz_message);
         } else if (!isAssistant && data?.chatroom_message) {
@@ -119,14 +108,15 @@ const ChatRoomInner = ({
         }
       },
       error: (error: Error) => {
-        console.error("订阅错误:", error);
-      },
+        console.error('订阅错误:', error);
+        showError(error.message || '订阅消息失败');
+      }
     });
 
     return () => {
       subscriber.unsubscribe();
     };
-  }, [apolloClient, propData.conversationId, isAssistant]);
+  }, [apolloClient, propData.conversationId, propData.isAssistant]);
 
   // 发送消息处理
   const handleSend = async () => {
@@ -144,8 +134,11 @@ const ChatRoomInner = ({
             ? uploadedImages.map((img) => img.imageId)
             : undefined,
         });
-        if (response.error) {
-          message.error(response.error.message || "发送消息失败");
+        if (response.error || response.errors ) {
+          const errorMessage = response.error?.message || 
+                             response.errors?.[0]?.message || 
+                             "发送消息失败";
+          showError(errorMessage);
           return;
         }
       } else {
@@ -163,8 +156,11 @@ const ChatRoomInner = ({
           buildChatroomMessageObjects(messageParams)
         );
 
-        if (response.error) {
-          message.error(response.error.message || "发送消息失败");
+        if (response.error || response.errors) {
+          const errorMessage = response.error?.message || 
+                             response.errors?.[0]?.message || 
+                             "发送消息失败";
+          showError(errorMessage);
           return;
         }
       }
@@ -173,7 +169,7 @@ const ChatRoomInner = ({
       setUploadedImages([]);
     } catch (error: any) {
       console.error("发送消息失败:", error);
-      message.error(error.message || "发送消息失败");
+      showError(error.message || "发送消息失败");
     }
   };
 
@@ -194,16 +190,15 @@ const ChatRoomInner = ({
       });
 
       console.log("获取预签名URL:", response);
-
-      if (response.error) {
-        message.error("获取上传URL失败");
+      if (response.error || response.errors) {
+        const errorMessage = response.error?.message || 
+                           response.errors?.[0]?.message || 
+                          "获取上传URL失败";
+        showError(errorMessage);
         return;
       }
-
       const { imagePresignedUrl } = response.data;
       const { uploadUrl, imageId, uploadHeaders } = imagePresignedUrl;
-
-      console.log("开始上传到预签名URL:", uploadUrl);
 
       const uploadResponse = await fetch(uploadUrl, {
         method: "PUT",
@@ -226,7 +221,7 @@ const ChatRoomInner = ({
       ]);
     } catch (error) {
       console.error("图片上传失败:", error);
-      message.error("图片上传失败");
+      showError("图片上传失败");
     }
   };
 
@@ -311,18 +306,14 @@ const ChatRoomInner = ({
 
       // 获取头像 URL
       let avatarUrl: string | undefined;
-      if (propData.isAssistant) {
+      if (isAssistant) {
         // AI 助手模式使用传入的头像
         isUser = message.sender === "user";
         avatarUrl = isUser ? propData.userImageUrl : propData.assistantImageUrl;
-        console.log("avatarUrl3333333", avatarUrl);
-        console.log("isUser3333333", isUser);
       } else {
         // 普通聊天室模式使用数据库中的头像
         isUser =  message.sender_id === propData.accountId;
         avatarUrl = message.sender_avatar;
-        console.log("avatarUrl", avatarUrl);
-        console.log("isUser", isUser);
       }
 
       return (
@@ -451,36 +442,6 @@ export const ChatRoom = (props: ChatRoomProps) => {
         const apolloClient =
           await context?.component?.engine?.systemInterface?.getApolloClient();
         if (apolloClient) {
-          // 获取认证信息
-          // console.log("context?.component?.engine",context?.component?.engine);
-          // const token = context?.component?.engine?.appConfig?.backendOnlyToken;
-          // const sessionId = context?.component?.engine?.systemInterface?.sessionId;
-          // console.log("token",token);
-          // console.log("sessionId",sessionId);
-          // // 初始化 WebSocket 连接
-          // if (apolloClient.link.ws) {
-          //   apolloClient.link.ws.send(JSON.stringify({
-          //     type: 'connection_init',
-          //     payload: {
-          //       authToken: token,
-          //       "X-SESSION-ID": sessionId
-          //     }
-          //   }));
-          // }
-
-          // // 设置请求拦截器
-          // const originalOperation = apolloClient.link.request;
-          // apolloClient.link.request = (operation: any) => {
-          //   operation.setContext({
-          //     headers: {
-          //       ...operation.getContext().headers,
-          //       Authorization: `Bearer ${token}`,
-          //       'X-SESSION-ID': sessionId
-          //     }
-          //   });
-          //   return originalOperation(operation);
-          // };
-
           setClient(apolloClient);
         }
       } catch (error) {
@@ -495,5 +456,7 @@ export const ChatRoom = (props: ChatRoomProps) => {
 
   if (!client) return null;
 
-  return <ChatRoomInner {...props} apolloClient={client} />;
+  return (
+      <ChatRoomInner {...props} apolloClient={client} />
+  );
 };

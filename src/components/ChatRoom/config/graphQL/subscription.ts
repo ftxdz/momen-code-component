@@ -1,7 +1,7 @@
 import { gql } from '@apollo/client';
 export const GQL_SUBSCRIPTION_FOR_CHATMESSAGE = gql`
 subscription subscriptionForConversation($conversationId: bigint!) {
-  chatroom_message(
+  chatroom_message:chatroom_message(
     where: { chatroom_chatroom: { _eq: $conversationId } }
     order_by: [{ id: asc }]
     distinct_on: [id]
