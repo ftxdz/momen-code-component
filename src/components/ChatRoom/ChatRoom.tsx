@@ -13,7 +13,8 @@ import { GQL_SEND_CHATROOM_MESSAGE } from "./config/graphQL/index";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppContext } from "zvm-code-context";
 
-import { getBase64 } from "./utils/file";
+//import { getBase64 } from "./utils/file";
+import { generateFileContentMd5Base64 } from "./utils/file";
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { transformChatroomMessages } from "./config/messageTransformer";
@@ -50,7 +51,11 @@ const ChatRoomInner = ({
   propData,
   apolloClient,
 }: ChatRoomProps & { apolloClient: any }) => {
-  const isAssistant = typeof propData.isAssistant === "boolean" ? propData.isAssistant : (propData.isAssistant =="true");
+  console.log("start");
+  const isAssistant =
+    typeof propData.isAssistant === "boolean"
+      ? propData.isAssistant
+      : propData.isAssistant == "true";
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -63,11 +68,14 @@ const ChatRoomInner = ({
   // 更新消息列表
   const updateMessages = useCallback((messageData: Message | Message[]) => {
     setMessages((prevMessages) => {
-      const newMessages = Array.isArray(messageData) ? messageData : [messageData];
-      
+      const newMessages = Array.isArray(messageData)
+        ? messageData
+        : [messageData];
+
       // 过滤掉已经存在的消息
-      const uniqueNewMessages = newMessages.filter(newMsg => 
-        !prevMessages.some(existingMsg => existingMsg.id === newMsg.id)
+      const uniqueNewMessages = newMessages.filter(
+        (newMsg) =>
+          !prevMessages.some((existingMsg) => existingMsg.id === newMsg.id)
       );
 
       if (uniqueNewMessages.length === 0) {
@@ -81,7 +89,7 @@ const ChatRoomInner = ({
   const showError = (errorMessage: string) => {
     console.log("errorMessage", errorMessage);
     Modal.error({
-      title: '错误提示',
+      title: "错误提示",
       content: errorMessage,
     });
   };
@@ -89,14 +97,16 @@ const ChatRoomInner = ({
   // WebSocket 消息处理
   useEffect(() => {
     const subscription = apolloClient.subscribe({
-      query: isAssistant ? GQL_SUBSCRIPTION_FOR_CONVERSATION : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
-      variables: { conversationId: propData.conversationId }
+      query: isAssistant
+        ? GQL_SUBSCRIPTION_FOR_CONVERSATION
+        : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
+      variables: { conversationId: propData.conversationId },
     });
 
     const subscriber = subscription.subscribe({
-      next: ({ data, errors }: { data?: any, errors?: any[] }) => {
+      next: ({ data, errors }: { data?: any; errors?: any[] }) => {
         if (errors) {
-          showError(errors[0]?.message || '订阅消息失败');
+          showError(errors[0]?.message || "订阅消息失败");
           return;
         }
 
@@ -108,9 +118,9 @@ const ChatRoomInner = ({
         }
       },
       error: (error: Error) => {
-        console.error('订阅错误:', error);
-        showError(error.message || '订阅消息失败');
-      }
+        console.error("订阅错误:", error);
+        showError(error.message || "订阅消息失败");
+      },
     });
 
     return () => {
@@ -134,10 +144,11 @@ const ChatRoomInner = ({
             ? uploadedImages.map((img) => img.imageId)
             : undefined,
         });
-        if (response.error || response.errors ) {
-          const errorMessage = response.error?.message || 
-                             response.errors?.[0]?.message || 
-                             "发送消息失败";
+        if (response.error || response.errors) {
+          const errorMessage =
+            response.error?.message ||
+            response.errors?.[0]?.message ||
+            "发送消息失败";
           showError(errorMessage);
           return;
         }
@@ -157,9 +168,10 @@ const ChatRoomInner = ({
         );
 
         if (response.error || response.errors) {
-          const errorMessage = response.error?.message || 
-                             response.errors?.[0]?.message || 
-                             "发送消息失败";
+          const errorMessage =
+            response.error?.message ||
+            response.errors?.[0]?.message ||
+            "发送消息失败";
           showError(errorMessage);
           return;
         }
@@ -175,53 +187,60 @@ const ChatRoomInner = ({
 
   // 文件上传处理
   const handleFileChange = async (info: UploadChangeParam<UploadFile>) => {
+    console.log("handleFileChange", info);
     const file = info.file;
-    if (!file.originFileObj) return;
+    console.log("file.originFileObj", file.originFileObj);
+    if (!file) return;
 
     try {
-      const base64 = await getBase64(file.originFileObj);
+      const fileObject = file instanceof File ? file : file.originFileObj;
+      if (!fileObject) {
+        throw new Error("无法获取文件对象");
+      }
+
+      // 先读取文件内容
+      // const arrayBuffer = await fileObject.arrayBuffer();
+      // const base64 = btoa(
+      //   new Uint8Array(arrayBuffer).reduce(
+      //     (data, byte) => data + String.fromCharCode(byte),
+      //     ''
+      //   )
+      // );
+      const imgMd5Base64 = await generateFileContentMd5Base64(fileObject);
       const suffix = file.name.split(".").pop()?.toUpperCase() || "WEBP";
 
-      console.log("开始上传图片:", { base64: base64.slice(0, 50), suffix });
+      console.log("开始上传图片:", { suffix });
 
       const response = await query(GQL_IMAGE_PRESIGNED_URL, {
-        imgMd5Base64: base64,
+        imgMd5Base64: imgMd5Base64,
         imageSuffix: suffix,
       });
 
       console.log("获取预签名URL:", response);
       if (response.error || response.errors) {
-        const errorMessage = response.error?.message || 
-                           response.errors?.[0]?.message || 
-                          "获取上传URL失败";
+        const errorMessage =
+          response.error?.message ||
+          response.errors?.[0]?.message ||
+          "获取上传URL失败";
         showError(errorMessage);
         return;
       }
       const { imagePresignedUrl } = response.data;
-      const { uploadUrl, imageId, uploadHeaders } = imagePresignedUrl;
+      const { imageId } = imagePresignedUrl;
 
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: uploadHeaders || {},
-        body: file.originFileObj,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
-      }
-
+      
       console.log("上传成功，设置预览");
-
+      console.log("imageId", imageId);
       setUploadedImages((prev) => [
         ...prev,
         {
           imageId,
-          previewUrl: URL.createObjectURL(file.originFileObj!),
+          previewUrl: URL.createObjectURL(fileObject),
         },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("图片上传失败:", error);
-      showError("图片上传失败");
+      showError(error.message || "图片上传失败");
     }
   };
 
@@ -312,7 +331,7 @@ const ChatRoomInner = ({
         avatarUrl = isUser ? propData.userImageUrl : propData.assistantImageUrl;
       } else {
         // 普通聊天室模式使用数据库中的头像
-        isUser =  message.sender_id === propData.accountId;
+        isUser = message.sender_id === propData.accountId;
         avatarUrl = message.sender_avatar;
       }
 
@@ -456,7 +475,5 @@ export const ChatRoom = (props: ChatRoomProps) => {
 
   if (!client) return null;
 
-  return (
-      <ChatRoomInner {...props} apolloClient={client} />
-  );
+  return <ChatRoomInner {...props} apolloClient={client} />;
 };

@@ -1,4 +1,5 @@
 import SparkMD5 from 'spark-md5';
+import * as CryptoJS from 'crypto-js';
 
 interface FileHashOptions {
   bufferSize?: number;
@@ -51,5 +52,26 @@ export const getBase64 = (
     };
 
     processNextPart();
+  });
+};
+
+export const generateFileContentMd5Base64 = (file: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = (e: any) => {
+      if (e?.target?.result) {
+        const wordArray = CryptoJS.lib.WordArray.create(e?.target?.result);
+        const hash: string = CryptoJS.enc.Base64.stringify(
+          CryptoJS.MD5(wordArray)
+        );
+        resolve(hash);
+      } else {
+        reject(new Error(''));
+      }
+    };
+    reader.onerror = () => {
+      reject(new Error(''));
+    };
+    reader.readAsArrayBuffer(file);
   });
 };
