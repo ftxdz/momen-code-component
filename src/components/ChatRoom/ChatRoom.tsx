@@ -13,13 +13,15 @@ import { GQL_SEND_CHATROOM_MESSAGE } from "./config/graphQL/index";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppContext } from "zvm-code-context";
 
-//import { getBase64 } from "./utils/file";
-import { generateFileContentMd5Base64 } from "./utils/file";
+
+import { generateFileContentMd5Base64 ,MediaFormat,FileType} from "./utils/file";
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { transformChatroomMessages } from "./config/messageTransformer";
 import { buildChatroomMessageObjects } from "./config/messageBuilder";
 import { Message, MessageContent, UploadedImage } from "./types";
+
+
 declare global {
   interface Window {
     _debug_last_ws_payload: any;
@@ -30,7 +32,7 @@ export interface ChatRoomPropData {
   placeholder?: string;
   conversationId: number;
   accountId: number;
-  isAssistant: boolean;
+  isMomenAI: boolean;
   userImageUrl?: string;
   assistantImageUrl?: string;
 }
@@ -51,11 +53,10 @@ const ChatRoomInner = ({
   propData,
   apolloClient,
 }: ChatRoomProps & { apolloClient: any }) => {
-  console.log("start");
   const isAssistant =
-    typeof propData.isAssistant === "boolean"
-      ? propData.isAssistant
-      : propData.isAssistant == "true";
+    typeof propData.isMomenAI === "boolean"
+      ? propData.isMomenAI
+      : propData.isMomenAI == "true";
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -87,9 +88,8 @@ const ChatRoomInner = ({
   }, []);
 
   const showError = (errorMessage: string) => {
-    console.log("errorMessage", errorMessage);
     Modal.error({
-      title: "错误提示",
+      title: "Error",
       content: errorMessage,
     });
   };
@@ -106,7 +106,7 @@ const ChatRoomInner = ({
     const subscriber = subscription.subscribe({
       next: ({ data, errors }: { data?: any; errors?: any[] }) => {
         if (errors) {
-          showError(errors[0]?.message || "订阅消息失败");
+          showError(errors[0]?.message || "Failed to subscribe to messages");
           return;
         }
 
@@ -118,15 +118,15 @@ const ChatRoomInner = ({
         }
       },
       error: (error: Error) => {
-        console.error("订阅错误:", error);
-        showError(error.message || "订阅消息失败");
+        console.error("Subscription error:", error);
+        showError(error.message || "Failed to subscribe to messages");
       },
     });
 
     return () => {
       subscriber.unsubscribe();
     };
-  }, [apolloClient, propData.conversationId, propData.isAssistant]);
+  }, [apolloClient, propData.conversationId, propData.isMomenAI]);
 
   // 发送消息处理
   const handleSend = async () => {
@@ -148,7 +148,7 @@ const ChatRoomInner = ({
           const errorMessage =
             response.error?.message ||
             response.errors?.[0]?.message ||
-            "发送消息失败";
+            "Failed to send message";
           showError(errorMessage);
           return;
         }
@@ -171,7 +171,7 @@ const ChatRoomInner = ({
           const errorMessage =
             response.error?.message ||
             response.errors?.[0]?.message ||
-            "发送消息失败";
+            "Failed to send message";
           showError(errorMessage);
           return;
         }
@@ -180,57 +180,57 @@ const ChatRoomInner = ({
       setInputValue("");
       setUploadedImages([]);
     } catch (error: any) {
-      console.error("发送消息失败:", error);
-      showError(error.message || "发送消息失败");
+      console.error("Failed to send message:", error);
+      showError(error.message || "Failed to send message");
     }
   };
 
   // 文件上传处理
   const handleFileChange = async (info: UploadChangeParam<UploadFile>) => {
-    console.log("handleFileChange", info);
     const file = info.file;
-    console.log("file.originFileObj", file.originFileObj);
     if (!file) return;
 
     try {
       const fileObject = file instanceof File ? file : file.originFileObj;
       if (!fileObject) {
-        throw new Error("无法获取文件对象");
+        throw new Error("Unable to get file object");
       }
 
-      // 先读取文件内容
-      // const arrayBuffer = await fileObject.arrayBuffer();
-      // const base64 = btoa(
-      //   new Uint8Array(arrayBuffer).reduce(
-      //     (data, byte) => data + String.fromCharCode(byte),
-      //     ''
-      //   )
-      // );
       const imgMd5Base64 = await generateFileContentMd5Base64(fileObject);
-      const suffix = file.name.split(".").pop()?.toUpperCase() || "WEBP";
-
-      console.log("开始上传图片:", { suffix });
+      
+      // 获取文件格式
+      const fileExtension = file.name.split('.').pop()?.toUpperCase();
+      const fileFormat: MediaFormat = (Object.entries(FileType).find(([type, mime]) => 
+        file.type === mime || type.toLowerCase() === fileExtension?.toLowerCase()
+      )?.[0] as MediaFormat) ?? MediaFormat.OTHER;
 
       const response = await query(GQL_IMAGE_PRESIGNED_URL, {
-        imgMd5Base64: imgMd5Base64,
-        imageSuffix: suffix,
+        imgMd5Base64,
+        imageSuffix: fileFormat,
       });
 
-      console.log("获取预签名URL:", response);
       if (response.error || response.errors) {
-        const errorMessage =
-          response.error?.message ||
-          response.errors?.[0]?.message ||
-          "获取上传URL失败";
-        showError(errorMessage);
-        return;
+        throw new Error(response.error?.message || response.errors?.[0]?.message || "Failed to get upload URL");
       }
+
       const { imagePresignedUrl } = response.data;
       const { imageId } = imagePresignedUrl;
-
       
-      console.log("上传成功，设置预览");
-      console.log("imageId", imageId);
+      if (!imagePresignedUrl?.uploadUrl || !imagePresignedUrl?.contentType) return {};
+      const uploadResponse = await fetch(imagePresignedUrl.uploadUrl, {
+        method: 'PUT',
+        body: fileObject,
+        headers: imagePresignedUrl.uploadHeaders ?? {
+          'Content-Type': imagePresignedUrl.contentType,
+          'Content-MD5': imgMd5Base64,
+        },
+      });
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Upload failed: ${errorText}`);
+      }
+
+      // 设置预览图
       setUploadedImages((prev) => [
         ...prev,
         {
@@ -238,9 +238,10 @@ const ChatRoomInner = ({
           previewUrl: URL.createObjectURL(fileObject),
         },
       ]);
+
     } catch (error: any) {
-      console.error("图片上传失败:", error);
-      showError(error.message || "图片上传失败");
+      console.error("Image upload failed:", error);
+      showError(error.message || "Image upload failed");
     }
   };
 
@@ -266,7 +267,7 @@ const ChatRoomInner = ({
         >
           <img
             src={content.image.url}
-            alt="消息图片"
+            alt="Message image"
             className={styles.messageImage}
           />
         </div>
@@ -344,7 +345,7 @@ const ChatRoomInner = ({
             }`}
           >
             {avatarUrl && (
-              <img src={avatarUrl} alt={"头像"} className={styles.avatar} />
+              <img src={avatarUrl} alt={"Avatar"} className={styles.avatar} />
             )}
             <div className={styles.messageContent}>
               {message.contents?.map((content, contentIndex) =>
@@ -417,7 +418,7 @@ const ChatRoomInner = ({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onPressEnter={handleKeyPress}
-              placeholder={propData.placeholder || "按回车发送，Shift+回车换行"}
+              placeholder={propData.placeholder || "Press Enter to send, Shift+Enter for new line"}
               autoSize={{ minRows: 1, maxRows: 4 }}
               variant="borderless"
             />

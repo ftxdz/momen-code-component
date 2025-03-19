@@ -1,59 +1,50 @@
-import SparkMD5 from 'spark-md5';
+
 import * as CryptoJS from 'crypto-js';
-
-interface FileHashOptions {
-  bufferSize?: number;
-  onProgress?: (progress: number) => void;
+export enum MediaFormat {
+  CSS = 'CSS',
+  DOC = 'DOC',
+  DOCX = 'DOCX',
+  GIF = 'GIF',
+  HTML = 'HTML',
+  JPEG = 'JPEG',
+  JPG = 'JPG',
+  JSON = 'JSON',
+  MOV = 'MOV',
+  MP3 = 'MP3',
+  MP4 = 'MP4',
+  OTHER = 'OTHER',
+  PDF = 'PDF',
+  PNG = 'PNG',
+  WEBP = 'WEBP',
+  PPT = 'PPT',
+  PPTX = 'PPTX',
+  TXT = 'TXT',
+  WAV = 'WAV',
+  XLS = 'XLS',
+  XLSX = 'XLSX',
+  XML = 'XML',
 }
-
-const DEFAULT_OPTIONS: Required<FileHashOptions> = {
-  bufferSize: 2 * 1024 * 1024,
-  onProgress: () => {}
-};
-
-export const getBase64 = (
-  file: File,
-  options: FileHashOptions = {}
-): Promise<string> => {
-  const { bufferSize, onProgress } = { ...DEFAULT_OPTIONS, ...options };
-  
-  return new Promise((resolve, reject) => {
-    const fileReader = new FileReader();
-    const hashAlgorithm = new SparkMD5.ArrayBuffer();
-    const totalParts = Math.ceil(file.size / bufferSize);
-    let currentPart = 0;
-
-    fileReader.onload = (e) => {
-      currentPart += 1;
-      const buffer = e?.target?.result;
-      
-      if (!buffer) {
-        reject(new Error('Failed to read file buffer'));
-        return;
-      }
-
-      hashAlgorithm.append(buffer as ArrayBuffer);
-      onProgress(Math.round((currentPart / totalParts) * 100));
-
-      if (currentPart < totalParts) {
-        processNextPart();
-        return;
-      }
-
-      resolve(window.btoa(hashAlgorithm.end(true)));
-    };
-
-    fileReader.onerror = reject;
-
-    const processNextPart = () => {
-      const start = currentPart * bufferSize;
-      const end = Math.min(start + bufferSize, file.size);
-      fileReader.readAsArrayBuffer(file.slice(start, end));
-    };
-
-    processNextPart();
-  });
-};
+export enum FileType {
+  JPG = 'image/jpg',
+  PNG = 'image/png',
+  WEBP = 'image/webp',
+  JPEG = 'image/jpeg',
+  GIF = 'image/gif',
+  ICO = 'image/x-ico',
+  SVG = 'image/svg+xml',
+  JSON = 'application/json',
+  PDF = 'application/pdf',
+  DOC = 'application/msword',
+  DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  XLS = 'application/vnd.ms-excel',
+  XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  PPT = 'application/vnd.ms-powerpoint',
+  PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  MOV = 'video/quicktime',
+  MP4 = 'video/mp4',
+  MP3 = 'audio/mpeg',
+  WAV = 'audio/wav',
+}
 
 export const generateFileContentMd5Base64 = (file: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
