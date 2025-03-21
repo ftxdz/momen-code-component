@@ -11,16 +11,18 @@ import { GQL_SUBSCRIPTION_FOR_CONVERSATION } from "./graphQL/zai/subscription";
 import { GQL_SUBSCRIPTION_FOR_CHATMESSAGE } from "./config/graphQL/subscription";
 import { GQL_SEND_CHATROOM_MESSAGE } from "./config/graphQL/index";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAppContext } from "zvm-code-context";
+import { useAppContext, EventHandler, State } from "zvm-code-context";
 
-
-import { generateFileContentMd5Base64 ,MediaFormat,FileType} from "./utils/file";
+import {
+  generateFileContentMd5Base64,
+  MediaFormat,
+  FileType,
+} from "./utils/file";
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { transformChatroomMessages } from "./config/messageTransformer";
 import { buildChatroomMessageObjects } from "./config/messageBuilder";
 import { Message, MessageContent, UploadedImage } from "./types";
-
 
 declare global {
   interface Window {
@@ -38,10 +40,15 @@ export interface ChatRoomPropData {
 }
 
 export interface ChatRoomStateData {
-  // 清空接口内容
+  sendMessageError?: State<string>;
+  subscribeMessageError?: State<string>;
 }
 
-export interface ChatRoomEvent {}
+export interface ChatRoomEvent {
+  onSendMessageSuccess?: EventHandler;
+  onSendMessageError?: EventHandler;
+  onSubscribeMessageError?: EventHandler;
+}
 
 export interface ChatRoomProps {
   propData: ChatRoomPropData;
@@ -51,9 +58,11 @@ export interface ChatRoomProps {
 
 const ChatRoomInner = ({
   propData,
+  event,
+  propState,
   apolloClient,
 }: ChatRoomProps & { apolloClient: any }) => {
-  const isAssistant =
+  const isMomenAI =
     typeof propData.isMomenAI === "boolean"
       ? propData.isMomenAI
       : propData.isMomenAI == "true";
@@ -63,17 +72,14 @@ const ChatRoomInner = ({
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const { query } = useAppContext();
 
-  // 添加消息列表的引用
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  // 更新消息列表
   const updateMessages = useCallback((messageData: Message | Message[]) => {
     setMessages((prevMessages) => {
       const newMessages = Array.isArray(messageData)
         ? messageData
         : [messageData];
 
-      // 过滤掉已经存在的消息
       const uniqueNewMessages = newMessages.filter(
         (newMsg) =>
           !prevMessages.some((existingMsg) => existingMsg.id === newMsg.id)
@@ -94,10 +100,9 @@ const ChatRoomInner = ({
     });
   };
 
-  // WebSocket 消息处理
   useEffect(() => {
     const subscription = apolloClient.subscribe({
-      query: isAssistant
+      query: isMomenAI
         ? GQL_SUBSCRIPTION_FOR_CONVERSATION
         : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
       variables: { conversationId: propData.conversationId },
@@ -110,16 +115,22 @@ const ChatRoomInner = ({
           return;
         }
 
-        if (isAssistant && data?.fz_streaming_fz_message) {
+        if (isMomenAI && data?.fz_streaming_fz_message) {
           updateMessages(data.fz_streaming_fz_message);
-        } else if (!isAssistant && data?.chatroom_message) {
+        } else if (!isMomenAI && data?.chatroom_message) {
           const message = transformChatroomMessages(data.chatroom_message);
           updateMessages(message);
         }
       },
-      error: (error: Error) => {
+      error: async(error: Error) => {
         console.error("Subscription error:", error);
         showError(error.message || "Failed to subscribe to messages");
+        await propState.subscribeMessageError?.set(
+          error.message || "Failed to subscribe to messages"
+        );
+        setTimeout(() => {
+          event.onSubscribeMessageError?.call(null);
+        });
       },
     });
 
@@ -129,14 +140,14 @@ const ChatRoomInner = ({
   }, [apolloClient, propData.conversationId, propData.isMomenAI]);
 
   // 发送消息处理
-  const handleSend = async () => {
+    const handleSend = async () => {
     const hasText = inputValue.trim().length > 0;
     const hasImages = uploadedImages.length > 0;
 
     if (!hasText && !hasImages) return;
 
     try {
-      if (isAssistant) {
+      if (isMomenAI) {
         const response = await query(GQL_SEND_MESSAGE, {
           conversationId: propData.conversationId,
           text: hasText ? inputValue.trim() : undefined,
@@ -149,9 +160,13 @@ const ChatRoomInner = ({
             response.error?.message ||
             response.errors?.[0]?.message ||
             "Failed to send message";
-          showError(errorMessage);
+          await propState.sendMessageError?.set(errorMessage);
+          setTimeout(() => {
+            event.onSendMessageError?.call(null);
+          });
           return;
         }
+        event.onSendMessageSuccess?.call(null);
       } else {
         const messageParams = {
           text: hasText ? inputValue.trim() : undefined,
@@ -172,16 +187,28 @@ const ChatRoomInner = ({
             response.error?.message ||
             response.errors?.[0]?.message ||
             "Failed to send message";
-          showError(errorMessage);
+          console.error("Failed to send message:", errorMessage);
+          await propState.sendMessageError?.set(errorMessage);
+          setTimeout(() => {
+            event.onSendMessageError?.call(null);
+          });
+          event.onSendMessageSuccess?.call(null);
+
           return;
         }
       }
 
       setInputValue("");
       setUploadedImages([]);
+      event.onSendMessageSuccess?.call(null);
     } catch (error: any) {
       console.error("Failed to send message:", error);
-      showError(error.message || "Failed to send message");
+      await propState.sendMessageError?.set(
+        error.message || "Failed to send message"
+      );
+      setTimeout(() => {
+        event.onSendMessageError?.call(null);
+      });
     }
   };
 
@@ -197,12 +224,15 @@ const ChatRoomInner = ({
       }
 
       const imgMd5Base64 = await generateFileContentMd5Base64(fileObject);
-      
+
       // 获取文件格式
-      const fileExtension = file.name.split('.').pop()?.toUpperCase();
-      const fileFormat: MediaFormat = (Object.entries(FileType).find(([type, mime]) => 
-        file.type === mime || type.toLowerCase() === fileExtension?.toLowerCase()
-      )?.[0] as MediaFormat) ?? MediaFormat.OTHER;
+      const fileExtension = file.name.split(".").pop()?.toUpperCase();
+      const fileFormat: MediaFormat =
+        (Object.entries(FileType).find(
+          ([type, mime]) =>
+            file.type === mime ||
+            type.toLowerCase() === fileExtension?.toLowerCase()
+        )?.[0] as MediaFormat) ?? MediaFormat.OTHER;
 
       const response = await query(GQL_IMAGE_PRESIGNED_URL, {
         imgMd5Base64,
@@ -210,19 +240,24 @@ const ChatRoomInner = ({
       });
 
       if (response.error || response.errors) {
-        throw new Error(response.error?.message || response.errors?.[0]?.message || "Failed to get upload URL");
+        throw new Error(
+          response.error?.message ||
+            response.errors?.[0]?.message ||
+            "Failed to get upload URL"
+        );
       }
 
       const { imagePresignedUrl } = response.data;
       const { imageId } = imagePresignedUrl;
-      
-      if (!imagePresignedUrl?.uploadUrl || !imagePresignedUrl?.contentType) return {};
+
+      if (!imagePresignedUrl?.uploadUrl || !imagePresignedUrl?.contentType)
+        return {};
       const uploadResponse = await fetch(imagePresignedUrl.uploadUrl, {
-        method: 'PUT',
+        method: "PUT",
         body: fileObject,
         headers: imagePresignedUrl.uploadHeaders ?? {
-          'Content-Type': imagePresignedUrl.contentType,
-          'Content-MD5': imgMd5Base64,
+          "Content-Type": imagePresignedUrl.contentType,
+          "Content-MD5": imgMd5Base64,
         },
       });
       if (!uploadResponse.ok) {
@@ -238,7 +273,6 @@ const ChatRoomInner = ({
           previewUrl: URL.createObjectURL(fileObject),
         },
       ]);
-
     } catch (error: any) {
       console.error("Image upload failed:", error);
       showError(error.message || "Image upload failed");
@@ -326,7 +360,7 @@ const ChatRoomInner = ({
 
       // 获取头像 URL
       let avatarUrl: string | undefined;
-      if (isAssistant) {
+      if (isMomenAI) {
         // AI 助手模式使用传入的头像
         isUser = message.sender === "user";
         avatarUrl = isUser ? propData.userImageUrl : propData.assistantImageUrl;
@@ -418,7 +452,10 @@ const ChatRoomInner = ({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onPressEnter={handleKeyPress}
-              placeholder={propData.placeholder || "Press Enter to send, Shift+Enter for new line"}
+              placeholder={
+                propData.placeholder ||
+                "Press Enter to send, Shift+Enter for new line"
+              }
               autoSize={{ minRows: 1, maxRows: 4 }}
               variant="borderless"
             />
