@@ -7,6 +7,9 @@ import { YouTubeVideo } from './YouTubeVideo';
 import {TweetPost} from './TweetPost';
 import {SwipeScale} from './SwipeScale';
 import {ChatRoom} from './ChatRoom';
+import {CronDescription} from './CronDescription';
+import {SalesDashboard} from './SalesDashboard';
+import {Calendar} from './Calendar';
 
 export default {
   AddCalculator,
@@ -18,4 +21,7 @@ export default {
   TweetPost,
   SwipeScale,
   ChatRoom,
-};
+  CronDescription,
+  SalesDashboard,
+  Calendar
+  };

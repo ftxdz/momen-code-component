@@ -497,7 +497,7 @@ export const ChatRoom = (props: ChatRoomProps) => {
     const initClient = async () => {
       try {
         const apolloClient =
-          await context?.component?.engine?.systemInterface?.getApolloClient();
+           context?.component?.engine?.systemInterface?.getApolloClient();
         if (apolloClient) {
           setClient(apolloClient);
         }

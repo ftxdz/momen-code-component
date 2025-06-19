@@ -1,4 +1,5 @@
-import { gql } from '@apollo/client';
+import { gql } from "@apollo/client";
+
 export const GQL_SUBSCRIPTION_FOR_CONVERSATION = gql`
 subscription subscriptionForConversation($conversationId: bigint!) {
   fz_streaming_fz_message(

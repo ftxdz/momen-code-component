@@ -22,6 +22,7 @@ export interface ConfirmModalProps {
 }
 
 export function ConfirmModal({ propData, event }: ConfirmModalProps) {
+  console.log("debugging123");
   const showConfirm = () => {
     Modal.confirm({
       title: propData.modalTitle || '',
