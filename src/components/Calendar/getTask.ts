@@ -10,6 +10,7 @@ export const GQL_GET_TASK = gql`
       description
       purpose
       recipient_phone_number
+      recipient_email
     }
     send_datetime
     status

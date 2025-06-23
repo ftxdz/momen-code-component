@@ -62,11 +62,21 @@ const calendarTypes = [
 // allowedPurposes 直接从 calendarTypes 派生
 const allowedPurposes = calendarTypes.map(c => c.id);
 
+// 自定义弹窗的状态类型
+interface PopupInfo {
+  event: any;
+  top: number;
+  left: number;
+}
+
 export function Calendar({ propData }: CalendarProps) {
+  console.log('debug: Calendar'); 
   const { query } = useAppContext();
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarInstance = useRef<any>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  // 用于管理自定义弹窗的状态
+  const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
 
   // 获取任务数据的函数
   const fetchTask = async () => {
@@ -109,17 +119,21 @@ export function Calendar({ propData }: CalendarProps) {
         end: endTime.toISOString(),
         // 事件描述
         body: task.task?.description || task.task?.purpose || "",
-        // 电话号码
-        location: task.task?.recipient_phone_number || "",
+        // 联系方式：仅当电话或邮件存在时才显示相应部分
+        location: [
+          task.task?.recipient_phone_number ? `phone_number:${task.task?.recipient_phone_number}` : null,
+          task.task?.recipient_email ? `email:${task.task?.recipient_email}` : null
+        ].filter(Boolean).join(' '),
       };
     });
   };
 
   useEffect(() => {
+    console.log('debug: useEffect'); 
     if (calendarRef.current) {
       const calendar = new TuiCalendar(calendarRef.current, {
         defaultView: "month",
-        useDetailPopup: true,
+        useDetailPopup: false, // 禁用默认弹窗，由我们自己实现
         isReadOnly: true,
         usageStatistics: false,
         calendars: calendarTypes,
@@ -152,7 +166,38 @@ export function Calendar({ propData }: CalendarProps) {
         const tzDate = calendar.getDate();
         setCurrentDate(new Date(tzDate.toDate()));
       });
-      return () => calendar.destroy();
+      
+      // 监听事件点击，现在它会正常触发
+      calendar.on('clickEvent', ({ event, nativeEvent }) => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        // 预估弹窗尺寸，用于边界检查
+        const popupWidth = 300; 
+        const popupHeight = 200;
+
+        let left = nativeEvent.clientX + 15;
+        let top = nativeEvent.clientY + 15;
+        
+        // 边界检查
+        if (left + popupWidth > viewportWidth) {
+          left = nativeEvent.clientX - popupWidth - 15;
+        }
+        if (top + popupHeight > viewportHeight) {
+          top = nativeEvent.clientY - popupHeight - 15;
+        }
+
+        // 更新state来显示我们的弹窗
+        setPopupInfo({ event, top, left });
+      });
+
+      return () => {
+        // 组件销毁时，清理可能残留在 body 中的弹窗
+        const strayPopup = document.querySelector('.toastui-calendar-detail-popup');
+        if (strayPopup?.parentElement === document.body) {
+          strayPopup.remove();
+        }
+        calendar.destroy();
+      };
     }
   }, [propData.refreshKey]); // 依赖refreshKey参数变化
 
@@ -200,6 +245,26 @@ export function Calendar({ propData }: CalendarProps) {
       </div>
       {/* 日历主体 */}
       <div ref={calendarRef} style={{ flex: 1 }} />
+
+      {/* --- 我们自定义的弹窗 --- */}
+      {popupInfo && (
+        <>
+          {/* 点击外部遮罩层可关闭弹窗 */}
+          <div className={styles.popupBackdrop} onClick={() => setPopupInfo(null)} />
+          <div className={styles.customPopup} style={{ top: `${popupInfo.top}px`, left: `${popupInfo.left}px` }}>
+            <div className={styles.popupHeader}>
+              <strong>{popupInfo.event.title}</strong>
+              <button onClick={() => setPopupInfo(null)} className={styles.closeBtn}>×</button>
+            </div>
+            <div className={styles.popupBody}>
+              <p><strong>Time:</strong><span>{new Date(popupInfo.event.start).toLocaleString()} - {new Date(popupInfo.event.end).toLocaleString()}</span></p>
+              <p><strong>Category:</strong><span>{popupInfo.event.calendarId}</span></p>
+              {popupInfo.event.body && <p><strong>Details:</strong><span>{popupInfo.event.body}</span></p>}
+              {popupInfo.event.location && <p><strong>Contact:</strong><span>{popupInfo.event.location}</span></p>}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
