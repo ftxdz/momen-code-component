@@ -306,4 +306,75 @@
 
 .userMessage .messageImage {
   border-radius: 8px;
+  border: 2px solid #1677ff;
+}
+
+/* 新增：临时消息样式 */
+.tempMessage {
+  opacity: 0.9;
+}
+
+.tempMessage .messageContent {
+  background-color: #f8f9fa;
+  border: 1px dashed #dee2e6;
+  position: relative;
+}
+
+.tempMessage .textContent {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 新增：流式指示器样式 */
+.streamingIndicator {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.typingDots {
+  font-size: 12px;
+  color: #666;
+  animation: typing 1.5s infinite;
+}
+
+@keyframes typing {
+  0%, 20% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  80%, 100% {
+    opacity: 0.3;
+  }
+}
+
+/* 新增：禁用状态样式 */
+.textArea:disabled {
+  background-color: #f5f5f5 !important;
+  color: #999 !important;
+  cursor: not-allowed;
+}
+
+.uploadButton:disabled {
+  color: #ccc !important;
+  cursor: not-allowed;
+}
+
+.sendButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 } 

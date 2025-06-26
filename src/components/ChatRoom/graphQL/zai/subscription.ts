@@ -34,3 +34,15 @@ subscription subscriptionForConversation($conversationId: bigint!) {
   }
 }
 `;
+
+// 新增：对话状态订阅
+export const GQL_SUBSCRIPTION_FOR_CONVERSATION_STATUS = gql`
+subscription subscriptionForConversationStatus($conversationId: Long!) {
+  fz_zai_listen_conversation_result(conversationId: $conversationId) {
+    conversationId
+    data
+    reasoningContent
+    status
+  }
+}
+`;

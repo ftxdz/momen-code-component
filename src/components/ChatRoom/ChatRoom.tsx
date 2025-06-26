@@ -7,7 +7,7 @@ import {
   CloseOutlined,
 } from "@ant-design/icons";
 import { GQL_IMAGE_PRESIGNED_URL, GQL_SEND_MESSAGE } from "./graphQL/zai";
-import { GQL_SUBSCRIPTION_FOR_CONVERSATION } from "./graphQL/zai/subscription";
+import { GQL_SUBSCRIPTION_FOR_CONVERSATION, GQL_SUBSCRIPTION_FOR_CONVERSATION_STATUS } from "./graphQL/zai/subscription";
 import { GQL_SUBSCRIPTION_FOR_CHATMESSAGE } from "./config/graphQL/subscription";
 import { GQL_SEND_CHATROOM_MESSAGE } from "./config/graphQL/index";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -22,7 +22,7 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import { transformChatroomMessages } from "./config/messageTransformer";
 import { buildChatroomMessageObjects } from "./config/messageBuilder";
-import { Message, MessageContent, UploadedImage } from "./types";
+import { Message, MessageContent, UploadedImage, ConversationStatus, ConversationStatusData, StreamingMessageTemp } from "./types";
 
 declare global {
   interface Window {
@@ -70,6 +70,11 @@ const ChatRoomInner = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
+  
+  // 新增：状态订阅相关状态
+  const [streamingMessageTemp, setStreamingMessageTemp] = useState<StreamingMessageTemp | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  
   const { query } = useAppContext();
 
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -93,6 +98,27 @@ const ChatRoomInner = ({
     });
   }, []);
 
+  // 新增：处理流式数据的回调函数
+  const handleStreamingData = useCallback((data: string, type: 'reasoning' | 'result') => {
+    setStreamingMessageTemp((prev) => {
+      if (!prev) {
+        // 如果没有临时消息，创建新的
+        return {
+          id: `temp-${Date.now()}`,
+          type,
+          content: data,
+          timestamp: new Date().toISOString(),
+        };
+      } else {
+        // 如果已有临时消息，累加内容
+        return {
+          ...prev,
+          content: prev.content + data,
+        };
+      }
+    });
+  }, []);
+
   const showError = (errorMessage: string) => {
     Modal.error({
       title: "Error",
@@ -101,14 +127,15 @@ const ChatRoomInner = ({
   };
 
   useEffect(() => {
-    const subscription = apolloClient.subscribe({
+    // 消息订阅
+    const messageSubscription = apolloClient.subscribe({
       query: isMomenAI
         ? GQL_SUBSCRIPTION_FOR_CONVERSATION
         : GQL_SUBSCRIPTION_FOR_CHATMESSAGE,
       variables: { conversationId: propData.conversationId },
     });
 
-    const subscriber = subscription.subscribe({
+    const messageSubscriber = messageSubscription.subscribe({
       next: ({ data, errors }: { data?: any; errors?: any[] }) => {
         if (errors) {
           showError(errors[0]?.message || "Failed to subscribe to messages");
@@ -117,13 +144,15 @@ const ChatRoomInner = ({
 
         if (isMomenAI && data?.fz_streaming_fz_message) {
           updateMessages(data.fz_streaming_fz_message);
+          // 当收到具体消息时，清除临时消息
+          setStreamingMessageTemp(null);
         } else if (!isMomenAI && data?.chatroom_message) {
           const message = transformChatroomMessages(data.chatroom_message);
           updateMessages(message);
         }
       },
       error: async(error: Error) => {
-        console.error("Subscription error:", error);
+        console.error("Message subscription error:", error);
         showError(error.message || "Failed to subscribe to messages");
         await propState.subscribeMessageError?.set(
           error.message || "Failed to subscribe to messages"
@@ -134,10 +163,62 @@ const ChatRoomInner = ({
       },
     });
 
+    // 新增：状态订阅（仅对MomenAI模式启用）
+    let statusSubscriber: any = null;
+    if (isMomenAI) {
+      const statusSubscription = apolloClient.subscribe({
+        query: GQL_SUBSCRIPTION_FOR_CONVERSATION_STATUS,
+        variables: { conversationId: propData.conversationId },
+      });
+
+      statusSubscriber = statusSubscription.subscribe({
+        next: ({ data, errors }: { data?: any; errors?: any[] }) => {
+          if (errors) {
+            console.error("Status subscription errors:", errors);
+            return;
+          }
+
+          if (data?.fz_zai_listen_conversation_result) {
+            const result: ConversationStatusData = data.fz_zai_listen_conversation_result;
+            setIsStreaming(result.status === ConversationStatus.STREAMING);
+            
+            // 处理流式状态
+            if (result.status === ConversationStatus.STREAMING) {
+              // 处理推理内容（累加显示）
+              if (result.reasoningContent) {
+                handleStreamingData(result.reasoningContent, 'reasoning');
+              }
+              
+              // 处理结果数据（累加显示）
+              if (result.data) {
+                handleStreamingData(result.data, 'result');
+              }
+            } else {
+              // 当状态不是流式时，清除临时消息
+              setStreamingMessageTemp(null);
+            }
+            
+            // 处理失败状态
+            if (result.status === ConversationStatus.FAILED) {
+              const errorMessage = result.data || "对话处理失败";
+              showError(errorMessage);
+            }
+          }
+        },
+        error: (error: Error) => {
+          console.error("Status subscription error:", error);
+          // 状态订阅错误不影响主要功能，只记录日志
+        },
+      });
+    }
+
     return () => {
-      subscriber.unsubscribe();
+      messageSubscriber.unsubscribe();
+      if (statusSubscriber) {
+        statusSubscriber.unsubscribe();
+      }
     };
-  }, [apolloClient, propData.conversationId, propData.isMomenAI]);
+  }, [apolloClient, propData.conversationId, isMomenAI]);
 
   // 发送消息处理
     const handleSend = async () => {
@@ -145,6 +226,12 @@ const ChatRoomInner = ({
     const hasImages = uploadedImages.length > 0;
 
     if (!hasText && !hasImages) return;
+
+    // 新增：检查是否正在流式处理中
+    if (isStreaming) {
+      showError("正在处理中，请稍后再试");
+      return;
+    }
 
     try {
       if (isMomenAI) {
@@ -353,8 +440,28 @@ const ChatRoomInner = ({
 
   // 渲染消息列表
   const renderMessageList = () => {
-    return messages.map((message, index) => {
-      const previousMessage = index > 0 ? messages[index - 1] : null;
+    const allMessages = [...messages];
+    
+    // 新增：如果有临时流式消息，添加到列表末尾
+    if (streamingMessageTemp && isMomenAI) {
+      const tempMessage: Message = {
+        id: parseInt(streamingMessageTemp.id),
+        sender_id: 0,
+        sender: "assistant",
+        sender_avatar: propData.assistantImageUrl || "",
+        contents: [{
+          id: parseInt(streamingMessageTemp.id),
+          type: "TEXT",
+          text: streamingMessageTemp.content,
+          image: null,
+        }],
+        created_at: streamingMessageTemp.timestamp,
+      };
+      allMessages.push(tempMessage);
+    }
+
+    return allMessages.map((message, index) => {
+      const previousMessage = index > 0 ? allMessages[index - 1] : null;
       const showTime = shouldShowTime(message, previousMessage);
       let isUser;
 
@@ -370,13 +477,16 @@ const ChatRoomInner = ({
         avatarUrl = message.sender_avatar;
       }
 
+      // 新增：为临时流式消息添加特殊样式
+      const isTempMessage = streamingMessageTemp && message.id === parseInt(streamingMessageTemp.id);
+
       return (
         <React.Fragment key={`${message.id}-${index}`}>
           {showTime && renderTimeDiv(message.created_at)}
           <div
             className={`${styles.messageItem} ${
               isUser ? styles.userMessage : styles.assistantMessage
-            }`}
+            } ${isTempMessage ? styles.tempMessage : ''}`}
           >
             {avatarUrl && (
               <img src={avatarUrl} alt={"Avatar"} className={styles.avatar} />
@@ -384,6 +494,12 @@ const ChatRoomInner = ({
             <div className={styles.messageContent}>
               {message.contents?.map((content, contentIndex) =>
                 renderMessageContent(content, contentIndex, message.created_at)
+              )}
+              {/* 新增：为临时消息添加加载指示器 */}
+              {isTempMessage && isStreaming && !streamingMessageTemp?.content && (
+                <div className={styles.streamingIndicator}>
+                  <span className={styles.typingDots}>正在思考中...</span>
+                </div>
               )}
             </div>
           </div>
@@ -458,6 +574,7 @@ const ChatRoomInner = ({
               }
               autoSize={{ minRows: 1, maxRows: 4 }}
               variant="borderless"
+              disabled={isStreaming}
             />
 
             <div className={styles.inputActions}>
@@ -467,11 +584,13 @@ const ChatRoomInner = ({
                 onChange={handleFileChange}
                 accept="image/*"
                 multiple={false}
+                disabled={isStreaming}
               >
                 <Button
                   type="text"
                   icon={<PictureOutlined />}
                   className={styles.uploadButton}
+                  disabled={isStreaming}
                 />
               </Upload>
 
@@ -480,6 +599,8 @@ const ChatRoomInner = ({
                 icon={<SendOutlined />}
                 onClick={handleSend}
                 className={styles.sendButton}
+                disabled={isStreaming}
+                loading={isStreaming}
               />
             </div>
           </div>
