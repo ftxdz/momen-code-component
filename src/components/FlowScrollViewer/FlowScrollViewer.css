@@ -1,0 +1,419 @@
+/* 导入字体 */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+.flow-scroll-viewer {
+  width: 100%;
+  height: 100%;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 31px;
+}
+
+/* 左侧指示器 */
+.gradient-dots {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* 圆点基础样式 */
+.dot {
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* 活动状态的长条 */
+.dot.active {
+  width: 6px;
+  height: 200px;
+  background: linear-gradient(180deg, #60a5fa 0%, #8b5cf6 50%, #ffffff 100%);
+  border-radius: 3px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 悬停效果 */
+.dot:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* 主要内容区域 */
+.content-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1200px;
+  position: relative;
+  gap: 31px;
+}
+
+/* 左侧文本区域 */
+.text-section {
+  flex: 53;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  max-width: none;
+}
+
+/* 功能列表容器 */
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* 移除间距，让描述紧贴标题 */
+}
+
+/* 功能项标题样式 */
+.feature-item {
+  font-size: 20px;
+  color: rgba(0, 0, 0, 0.5);
+  font-weight: 600;
+  padding: 0px; /* 移除内边距 */
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none; /* 移除边框 */
+  line-height: 36px; /* 180% */
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  position: relative;
+  margin-left: 0; /* 移除左边距 */
+  background: transparent; /* 移除背景 */
+}
+
+/* 移除圆点装饰 */
+.feature-item::before {
+  display: none;
+}
+
+.feature-item:hover {
+  color: #64748b; /* 悬停时稍微深一点 */
+  background: transparent;
+  border-color: transparent;
+}
+
+.feature-item.active {
+  color: #000;
+  background: transparent;
+  border-color: transparent;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 46px; /* 127.778% */
+}
+
+.description-section .main-description {
+  margin: 0;
+  color: #000;
+  font-size: 16px;
+  line-height: 26px; /* 162.5% */
+  font-weight: 500;
+  max-width: 500px;
+  margin-top: 12px;
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+}
+
+/* 右侧图片展示区域 */
+.ui-section {
+  flex: 50;
+  display: flex;
+  padding: 37px 36px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-radius: 30px;
+  border: 2px solid #fff;
+  background: rgba(255, 255, 255, 0.5);
+  height: fit-content;
+}
+
+.ui-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.ui-image img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 430 / 526;
+  border-radius: 20px;
+  object-fit: cover;
+}
+
+/* 响应式设计 - 当宽度小于700px时的样式变化 */
+@media (max-width: 700px) {
+  /* 主容器改为垂直布局 */
+  .flow-scroll-viewer {
+    flex-direction: column;
+    gap: 0px;
+    padding: 0px;
+    height: auto;
+  }
+
+  /* 内容包装器改为垂直布局 */
+  .content-wrapper {
+    flex-direction: column;
+    gap: 0px;
+    max-width: 100%;
+    padding: 0 0;
+  }
+
+  /* 移动端卡片容器 */
+  .mobile-card-container {
+    position: relative;
+    gap: 30px;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    display: flex;
+    flex-direction: row;
+    touch-action: pan-y; /* 允许垂直滚动，但阻止水平滚动 */
+    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+  }
+
+  /* 移动端卡片 */
+  .mobile-card {
+    width: 100%;
+    height: auto;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 22px;
+    touch-action: none; /* 禁用默认触摸行为 */
+    border-radius: 30px;
+    background: #fff;
+    box-sizing: border-box;
+  }
+
+  /* 移动端卡片图片 */
+  .mobile-card-image {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 100%; /* 创建1:1的宽高比 */
+    margin-bottom: 16px;
+    overflow: hidden;
+    border-radius: 20px;
+  }
+
+  .mobile-card-image img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 20px;
+    object-fit: cover;
+  }
+
+  /* 移动端卡片内容 */
+  .mobile-card-content {
+    flex: none;
+    text-align: left;
+    padding: 0;
+  }
+
+  /* 移动端卡片标题 */
+  .mobile-card-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #000;
+    margin: 0 0 12px 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  /* 移动端卡片描述 */
+  .mobile-card-description {
+    font-size: 16px;
+    line-height: 24px;
+    color: #666;
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+  }
+
+  /* 移动端指示器 - 使用桌面端样式 */
+  .mobile-indicators {
+    position: relative;
+    margin-top: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .mobile-indicator {
+    width: 6px;
+    height: 6px;
+    background: white;
+    border-radius: 50%;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .mobile-indicator.active {
+    width: 150px;
+    height: 6px;
+    background: linear-gradient(90deg, #60a5fa 0%, #8b5cf6 25%, #ffffff 50%);
+    border-radius: 3px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-indicator:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 移动端调试按钮 */
+  .mobile-debug-buttons {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: 20;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 10px 15px;
+    border-radius: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-debug-buttons button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .mobile-debug-buttons button:hover {
+    background: #2563eb;
+  }
+
+  .mobile-debug-buttons span {
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+  }
+
+  /* 文本区域占满宽度 */
+  .text-section {
+    flex: none;
+    width: 100%;
+    order: 2; /* 在移动端，文本区域放在图片下方 */
+    display: block; /* 确保显示 */
+  }
+
+  /* 功能列表在移动端调整 */
+  .feature-list {
+    gap: 0px;
+    display: block; /* 确保显示 */
+  }
+
+  /* 功能项在移动端调整字体大小 */
+  .feature-item {
+    font-size: 18px;
+    line-height: 28px;
+    margin-bottom: 0px;
+    display: block; /* 确保显示 */
+    visibility: hidden; /* 确保可见 */
+    opacity: 1; /* 确保不透明 */
+    height: 0px;
+  }
+
+  .feature-item.active {
+    font-size: 28px;
+    line-height: 36px;
+    height: auto;
+    margin-bottom: 0px; /* 激活状态增加间距 */
+    display: block; /* 确保显示 */
+    visibility: visible; /* 确保可见 */
+    opacity: 1; /* 确保不透明 */
+  }
+
+  /* 描述区域在移动端调整 */
+  .description-section {
+    margin-top: 10px; /* 确保描述与标题有间距 */
+    display: block; /* 确保显示 */
+    visibility: visible; /* 确保可见 */
+    opacity: 1; /* 确保不透明 */
+  }
+
+  /* 描述文字在移动端调整 */
+  .description-section .main-description {
+    font-size: 14px;
+    line-height: 22px;
+    max-width: 100%;
+    margin: 0;
+    color: #666; /* 移动端稍微调暗颜色 */
+    display: block; /* 确保显示 */
+    visibility: visible; /* 确保可见 */
+    opacity: 1; /* 确保不透明 */
+  }
+
+  /* UI展示区域在移动端调整 */
+  .ui-section {
+    flex: none;
+    width: 100%;
+    order: 1; /* 在移动端，图片区域放在文本上方 */
+    padding: 0px;
+    border-radius: 0px;
+    margin-bottom: 0px; /* 添加底部间距 */
+    background: none;
+    border: none;
+    display: block; /* 确保显示 */
+  }
+
+  /* 图片在移动端调整 */
+  .ui-image {
+    display: block; /* 确保显示 */
+  }
+
+  .ui-image img {
+    border-radius: 15px;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    display: block; /* 确保显示 */
+  }
+
+  /* 左侧指示器在移动端隐藏或调整 */
+  .gradient-dots {
+    display: none; /* 在移动端隐藏左侧指示器 */
+  }
+
+  /* 确保功能项容器正确显示 */
+  .feature-list > div {
+    width: 100%;
+    display: block; /* 确保显示 */
+  }
+}

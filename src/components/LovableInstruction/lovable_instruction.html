@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphQL Subscription Inspector</title>  
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6; /* Blue-500 */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #resultText {
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.875rem; /* 14px */
+            line-height: 1.6;
+        }
+        #resultText .code-block {
+            background-color: #f3f4f6;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+            display: block;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen py-8">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-3xl mx-4">
+        <div class="mb-6 text-center">
+            <h1 class="text-2xl font-bold text-gray-800">Momen Agent Interaction Guide</h1>
+            <p class="text-gray-500 mt-1">Generate API instructions for a given agent.</p>
+        </div>
+
+        <!-- Input Form -->
+        <div class="space-y-4">
+            <div>
+                <label for="graphqlEndpoint" class="block text-sm font-medium text-gray-700 mb-1">GraphQL Endpoint URL</label>
+                <input type="url" id="graphqlEndpoint" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., https://villa.momen.app/zero/.../api/graphql-v2">
+            </div>
+            <div>
+                <label for="zaiConfig" class="block text-sm font-medium text-gray-700 mb-1">ZAI Config</label>
+                <textarea id="zaiConfig" class="w-full h-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder='e.g., {"zAiConfig":{"id":"lzb5nnly", "inputArgs": {...}, ...}}'></textarea>
+            </div>
+
+            <button id="inspectButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition flex items-center justify-center">
+                Generate Instructions
+            </button>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result" class="mt-6 relative bg-gray-50 rounded-lg hidden min-h-[80px] p-4">
+             <div id="loader" class="loader absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden"></div>
+             <pre id="resultText"></pre>
+             <button id="copyButton" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-semibold py-1 px-2 rounded-md transition hidden">Copy</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const inspectButton = document.getElementById('inspectButton');
+        const endpointInput = document.getElementById('graphqlEndpoint');
+        const configTextarea = document.getElementById('zaiConfig');
+        const resultDiv = document.getElementById('result');
+        const resultText = document.getElementById('resultText');
+        const loader = document.getElementById('loader');
+        const copyButton = document.getElementById('copyButton');
+
+        // --- Core Logic ---
+        const introspectionQuery = `
+          query IntrospectionQuery {
+            __schema {
+              subscriptionType { name }
+              types {
+                kind
+                name
+                fields(includeDeprecated: false) {
+                  name
+                  type { ...TypeRef }
+                }
+              }
+            }
+          }
+          fragment TypeRef on __Type {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType { kind, name }
+              }
+            }
+          }
+        `;
+
+        function getBaseType(type) {
+            let currentType = type;
+            while (currentType && currentType.ofType) {
+                currentType = currentType.ofType;
+            }
+            return currentType;
+        }
+
+        function getFullTypeString(type) {
+            if (type.name) return type.name;
+            if (type.kind === 'NON_NULL') return `${getFullTypeString(type.ofType)}!`;
+            if (type.kind === 'LIST') return `[${getFullTypeString(type.ofType)}]`;
+            return '';
+        }
+
+        function formatTypeFields(typeName, schema, depth = 0, visited = new Set()) {
+            if (visited.has(typeName) || depth > 10) {
+                return ' '.repeat(depth * 2) + `... [Circular reference to ${typeName}]\n`;
+            }
+            const typeDetails = schema.types.find(t => t.name === typeName);
+            if (!typeDetails || typeDetails.kind !== 'OBJECT' || !typeDetails.fields) return '';
+            visited.add(typeName);
+            let output = '';
+            for (const field of typeDetails.fields) {
+                const fullTypeString = getFullTypeString(field.type);
+                const baseType = getBaseType(field.type);
+                output += ' '.repeat(depth * 2) + `- ${field.name}: ${fullTypeString}\n`;
+                output += formatTypeFields(baseType.name, schema, depth + 1, new Set(visited));
+            }
+            console.log("output",output);
+            return output;
+        }
+
+        function formatInputArgs(inputArgs) {
+            if (!inputArgs || Object.keys(inputArgs).length === 0) {
+                return 'This agent does not require any input arguments.';
+            }
+            let output = 'The `fz_zai_create_conversation` mutation takes `inputArgs` (a JSON Object) and `zaiConfigId`.\n';
+            output += 'The `inputArgs` object for this agent expects the following keys:\n';
+            for (const key in inputArgs) {
+                const arg = inputArgs[key];
+                output += `\n- **Key**: \`${key}\`\n`;
+                output += `  - **Display Name**: "${arg.displayName}"\n`;
+                output += `  - **Type**: ${arg.type}\n`;
+            }
+            return output;
+        }
+
+        function generateFileUploadInstructions(inputArgs) {
+            const hasImage = Object.values(inputArgs).some(arg => arg.type === 'IMAGE');
+            const hasVideo = Object.values(inputArgs).some(arg => arg.type === 'VIDEO');
+
+            if (!hasImage && !hasVideo) return '';
+
+            let instructions = '\nStep 1.5: Handle File Inputs\n';
+            instructions += 'If your agent needs an IMAGE or VIDEO, you must first upload the file to get an ID.\n\n';
+            instructions += 'To do this, you first need to calculate the MD5 hash of your file and then Base64-encode that raw 128-bit hash. This will be your `imgMd5Base64` or `videoMd5Base64`. Use import { md5 } from \'js-md5\';. \n\n';
+
+            if (hasImage) {
+                instructions += 'For IMAGE inputs:\n';
+                instructions += '1. Call the `imagePresignedUrl` mutation.\n';
+                instructions += '   <span class="code-block">';
+                instructions += '   mutation GetImageUploadUrl($md5: String!, $suffix: MediaFormat!, $acl: CannedAccessControlList) {\n';
+                instructions += '     imagePresignedUrl(imgMd5Base64: $md5, imageSuffix: $suffix, acl: $acl) {\n';
+                instructions += '       imageId\n       uploadUrl\n       uploadHeaders\n       downloadUrl\n       contentType\n';
+                instructions += '     }\n   }</span>';
+                instructions += '   Example Variables: `{ "md5": "[Base64-encoded MD5]", "suffix": "PNG", "acl": "PRIVATE" }`\n\n';
+                instructions += '2. The mutation returns an `imageId`, `uploadUrl`, and `uploadHeaders`.\n';
+                instructions += '3. `PUT` your raw image file to the `uploadUrl`. If `uploadHeaders` is not empty, include its contents as headers in the request.\n';
+                instructions += '4. Use the returned `imageId` as the value for the IMAGE input argument in Step 2.\n\n';
+            }
+
+            if (hasVideo) {
+                instructions += 'For VIDEO inputs:\n';
+                instructions += '1. Call the `videoPresignedUrl` mutation.\n';
+                instructions += '   <span class="code-block">';
+                instructions += '   mutation GetVideoUploadUrl($md5: String!, $format: MediaFormat!, $acl: CannedAccessControlList) {\n';
+                instructions += '     videoPresignedUrl(videoMd5Base64: $md5, videoFormat: $format, acl: $acl) {\n';
+                instructions += '       videoId\n       uploadUrl\n       uploadHeaders\n       downloadUrl\n       contentType\n';
+                instructions += '     }\n   }</span>';
+                instructions += '   Example Variables: `{ "md5": "[Base64-encoded MD5]", "format": "MP4", "acl": "PRIVATE" }`\n\n';
+                instructions += '2. The mutation returns a `videoId`, `uploadUrl`, and `uploadHeaders`.\n';
+                instructions += '3. `PUT` your raw video file to the `uploadUrl`. If `uploadHeaders` is not empty, include its contents as headers in the request.\n';
+                instructions += '4. Use the returned `videoId` as the value for the VIDEO input argument in Step 2.\n\n';
+            }
+
+            instructions += '--- Parameter Enums ---\n';
+            instructions += '`CannedAccessControlList` (use PRIVATE):\nAUTHENTICATE_READ, AWS_EXEC_READ, BUCKET_OWNER_FULL_CONTROL, BUCKET_OWNER_READ, DEFAULT, LOG_DELIVERY_WRITE, PRIVATE, PUBLIC_READ, PUBLIC_READ_WRITE\n\n';
+            instructions += '`MediaFormat`:\nCSS, CSV, DOC, DOCX, GIF, HTML, ICO, JPEG, JPG, JSON, MOV, MP3, MP4, OTHER, PDF, PNG, PPT, PPTX, SVG, TXT, WAV, WEBP, XLS, XLSX, XML\n';
+
+            return instructions.trim();
+        }
+
+        function generateInstructions(gqlUrl, configId, operationName, inputArgsDetails, fileUploadInstructions, dataFieldInfo) {
+            let subscriptionUrl = '';
+            try {
+                const url = new URL(gqlUrl);
+                const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+                const path = url.pathname.replace('/graphql-v2', '/graphql-subscription');
+                subscriptionUrl = `${wsProtocol}//${url.host}${path}`;
+            } catch (e) {
+                subscriptionUrl = '[Could not derive subscription URL from endpoint]';
+            }
+
+            const loginQuery = `mutation LoginUser($username: String!, $password: String!) {
+  loginWithPassword(name: $username, password: $password) {
+    jwt {
+      token
+    }
+  }
+}`;
+            const invokeQuery = `mutation StartAgent($configId: String!, $inputs: Map_String_ObjectScalar!) {
+  fz_zai_create_conversation(zaiConfigId: $configId, inputArgs: $inputs)
+}`;
+            const subscriptionQuery = `subscription ${operationName}($conversationId: Long!) {
+  fz_zai_listen_conversation_result(conversationId: $conversationId) {
+    data
+    reasoningContent
+    status
+  }
+}`;
+            const minifiedSubscriptionQuery = subscriptionQuery.replace(/\s\s+/g, ' ').trim();
+
+            let finalString = `
+Connect to the agent built on Momen. 
+
+Momen's backend runs on a GraphQL protocol.
+- HTTP URL: ${gqlUrl}
+- WebSocket URL: ${subscriptionUrl}
+
+Given agent config ID "${configId}", you can invoke it as follows:
+
+Step 1: Obtain Auth Token
+Call the \`loginWithPassword\` mutation to get a user's JWT token.
+Example Query:
+<span class="code-block">${loginQuery}</span>
+${fileUploadInstructions}
+Step 2: Invoke AI Agent
+Make a POST request to the HTTP URL with "Authorization: Bearer {token}".
+
+--- AGENT INPUT ARGUMENTS ---
+${inputArgsDetails}
+-----------------------------
+
+Example Query:
+<span class="code-block">${invokeQuery}</span>
+Example Variables: \`{ "configId": "${configId}", "inputs": { /* your args here */ } }\`
+
+The return value is \`conversationId\`, a bigint used for listening to results.
+
+Step 3: Subscribe to Results
+Connect to the WebSocket URL and send a "connection_init" message:
+<span class="code-block">{ "id": "1", "type": "connection_init", "payload": { "authToken": "[yourAuthToken]" } }</span>
+Then, send a "start" message to subscribe.
+The subscription query is:
+<span class="code-block">${subscriptionQuery}</span>
+The full payload for the "start" message is:
+<span class="code-block">{
+    "id": "2", // Must be unique per subscription
+    "type": "start",
+    "payload": {
+        "operationName": "${operationName}",
+        "query": "${minifiedSubscriptionQuery}",
+        "variables": { "conversationId": "[conversationId from Step 2]" }
+    }
+}</span>
+
+---
+AGENT-SPECIFIC DETAILS
+---
+The 'status' field can be one of: CANCELED, COMPLETED, CREATED, FAILED, IN_PROGRESS, STREAMING, THINKING_CHAIN_STREAMING
+
+${dataFieldInfo}
+`;
+            return finalString.trim();
+        }
+
+        function showMessage(htmlMessage, isError = false) {
+            loader.classList.add('hidden');
+            resultDiv.classList.remove('hidden');
+            resultText.innerHTML = isError ? `<span class="text-red-600">${htmlMessage}</span>` : htmlMessage;
+            copyButton.classList.toggle('hidden', isError);
+            if (!isError) copyButton.textContent = 'Copy';
+        }
+
+        async function inspectAndGenerate() {
+            const endpoint = endpointInput.value.trim();
+            const configJson = configTextarea.value.trim();
+
+            if (!endpoint || !configJson) {
+                showMessage('Please provide both an endpoint and a ZAI Config.', true);
+                return;
+            }
+
+            let zaiConfig, configId, inputArgs;
+            try {
+                zaiConfig = JSON.parse(configJson);
+                configId = zaiConfig.zAiConfig.id;
+                inputArgs = zaiConfig.zAiConfig.inputArgs || {};
+                if (!configId) throw new Error("Field 'zAiConfig.id' not found in the provided JSON.");
+            } catch (e) {
+                showMessage(`Error parsing ZAI Config: ${e.message}`, true);
+                return;
+            }
+
+            const operationName = `fz_listen_zai_${configId}`;
+
+            resultText.innerHTML = '';
+            copyButton.classList.add('hidden');
+            loader.classList.remove('hidden');
+            resultDiv.classList.remove('hidden');
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: introspectionQuery }),
+                });
+
+                if (!response.ok) throw new Error(`Network error: ${response.status} ${response.statusText}`);
+                const schemaData = await response.json();
+                if (schemaData.errors) throw new Error(`GraphQL error: ${schemaData.errors.map(e => e.message).join(', ')}`);
+
+                const schema = schemaData.data.__schema;
+                const fileUploadInstructions = generateFileUploadInstructions(inputArgs);
+                const inputArgsDetails = formatInputArgs(inputArgs);
+
+                const rootTypeInfo = schema.subscriptionType;
+                if (!rootTypeInfo || !rootTypeInfo.name) throw new Error("This schema has no subscription type defined.");
+
+                const operationRoot = schema.types.find(t => t.name === rootTypeInfo.name);
+                if (!operationRoot || !operationRoot.fields) throw new Error(`The root subscription type '${rootTypeInfo.name}' could not be found or has no fields.`);
+
+                const lowerCaseOperationName = operationName.toLowerCase();
+                const targetOperation = operationRoot.fields.find(f => f.name.toLowerCase() === lowerCaseOperationName);
+                if (!targetOperation) {
+                    const availableFields = operationRoot.fields.map(f => f.name).join(',\n');
+                    throw new Error(`Subscription '${operationName}' not found. Available fields:\n${availableFields}`);
+                }
+
+                const operationReturnType = getBaseType(targetOperation.type);
+                const operationReturnTypeName = operationReturnType.name;//fz_zai_m90yljsm_result
+                const operationReturnTypeDetails = schema.types.find(t => t.name === operationReturnTypeName);
+                if (!operationReturnTypeDetails || !operationReturnTypeDetails.fields) throw new Error(`Could not find details for return type: '${operationReturnTypeName}'.`);
+
+                const dataField = operationReturnTypeDetails.fields.find(f => f.name === 'data');
+                if (!dataField) throw new Error(`The return type '${operationReturnTypeName}' does not have a 'data' field.`);
+
+                const dataType = getBaseType(dataField.type);
+                /**
+                 * {
+                "kind": "OBJECT",
+                "name": "fz_custom_type_m9azddxc",
+                "ofType": null
+              }
+                */
+                const fullDataTypeString = getFullTypeString(dataField.type);//fz_custom_type_m9azddxc
+
+                let dataFieldInfo = `Type of 'data' field is \`${fullDataTypeString}\`.\n`;
+                const subFields = formatTypeFields(dataType.name, schema);
+                if (subFields) {
+                    dataFieldInfo += `Subfields:\n${subFields}`;
+                } else {
+                    dataFieldInfo += `(Type is a scalar with no subfields)`;
+                }
+
+                const finalInstructions = generateInstructions(endpoint, configId, targetOperation.name, inputArgsDetails, fileUploadInstructions, dataFieldInfo);
+                showMessage(finalInstructions);
+
+            } catch (error) {
+                console.error('Inspection failed:', error);
+                showMessage(error.message, true);
+            }
+        }
+
+        function copyResultsToClipboard() {
+            const textToCopy = resultText.innerText; // Use innerText to get clean text without HTML
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                copyButton.textContent = 'Copied!';
+                setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
+            } catch (err) {
+                console.error('Fallback: Oops, unable to copy', err);
+                copyButton.textContent = 'Failed!';
+            }
+            document.body.removeChild(textArea);
+        }
+
+        inspectButton.addEventListener('click', inspectAndGenerate);
+        copyButton.addEventListener('click', copyResultsToClipboard);
+    </script>
+</body>
+</html>cod

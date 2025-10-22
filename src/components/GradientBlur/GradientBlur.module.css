@@ -1,0 +1,70 @@
+/* 容器样式 */
+.gradient-blur-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: 16px;
+}
+
+/* 渐变背景层 */
+.gradient-blur-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  /* 渐变背景 */
+  background: linear-gradient(
+    90deg,
+    #53d6ff -0.55%,
+    #d869ff 34.99%,
+    #62b4ff 73.33%,
+    #5effb1 99.34%
+  );
+
+  /* 模糊效果 */
+  filter: blur(50px);
+
+  /* 混合模式，让渐变色与图片混合 */
+  mix-blend-mode: soft-light;
+  z-index: 1;
+}
+
+/* 如果需要内容区域不受模糊影响，可以添加一个内部容器 */
+.gradient-blur-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* 修复 _container_1glez_7 类的样式定义 */
+._container_1glez_7 {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: calc(100% / 68);
+  overflow: hidden;
+  z-index: 1;
+}
+
+/* 确保渐变背景能够正确显示 */
+._container_1glez_7 > div {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: calc(100% / 68);
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    #53d6ff -0.55%,
+    #d869ff 34.99%,
+    #62b4ff 73.33%,
+    #5effb1 99.34%
+  );
+  filter: blur(50px);
+  z-index: 1;
+}
